@@ -1,0 +1,89 @@
+.accordion-button,
+.accordion-item .btn {
+  height: calc(2.5 * var(--bs-body-font-size));
+  padding: 0 !important;
+  box-shadow: none;
+  background: var(--bs-white);
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  color: var(--bs-body-color);
+  transition: all 0.2s, background 0s;
+  margin-left: calc(calc(2 * var(--depth)) * var(--bs-body-font-size));
+  max-width: calc(100% - calc(calc(2 * var(--depth)) * var(--bs-body-font-size)));
+  overflow: hidden;
+}
+
+.hide .accordion-button,
+.hide .accordion-item .btn {
+  margin-left: 0;
+  max-width: 100%;
+  width: calc(2.5 * var(--bs-body-font-size)) !important;
+}
+
+.hide .accordion-button.collapsed {
+  margin-bottom: calc(1 * var(--bs-body-font-size)) !important;
+}
+
+.accordion-button:hover,
+.accordion-item .btn:hover {
+  background-color: var(--bs-gray-100);
+  border-color: var(--bs-gray-200);
+}
+
+.accordion-button.active,
+.accordion-item .btn.active {
+  background-color: var(--bs-gray-200);
+  border-color: var(--bs-gray-400);
+}
+
+.hide .accordion-button::before {
+  content: "\F3D7";
+  font-family: "bootstrap-icons";
+  position: absolute;
+  bottom: 0;
+  left: 2px;
+  font-size: calc(0.4 * var(--bs-body-font-size));
+  opacity: 0.5;
+  rotate: 0.2s;
+}
+
+.hide .accordion-button.collapsed::before {
+  content: "\F3D1";
+  opacity: 1;
+}
+
+.accordion-button::after {
+  content: "\F3D7";
+  font-family: "bootstrap-icons";
+  background: none;
+  opacity: 0.25;
+  transform: none;
+  margin-right: var(--bs-body-font-size);
+  scale: 1.25;
+  transition: 0.05s ease-in-out;
+}
+
+.accordion-button:hover::after {
+  opacity: 1;
+}
+
+.accordion-button:not(.collapsed)::after {
+  content: "\F3D8";
+  font-family: "bootstrap-icons";
+  transform: none;
+  background: none;
+  opacity: 1;
+}
+
+.accordion-item {
+  border: none;
+}
+
+.icon {
+  height: calc(2.5 * var(--bs-body-font-size));
+  width: calc(2.5 * var(--bs-body-font-size));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(1.25 * var(--bs-body-font-size));
+  flex-shrink: 0;
+}
