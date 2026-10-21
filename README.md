@@ -1,2 +1,2 @@
-# branch-navigation-ui
+# Branch Navigation UI
 UI navigasi dengan struktur bercabang
