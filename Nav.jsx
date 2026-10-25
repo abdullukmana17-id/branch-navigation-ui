@@ -1,4 +1,3 @@
-
 import {
     forwardRef,
     useId,
@@ -37,35 +36,143 @@ function useIsWide(breakpoint = 576) {
     return isWide;
 }
 
-// Membaca status accordion dari localStorage.
 function getSavedAccordionState() {
     if (typeof window === "undefined") {
         return {};
     }
 
     try {
-        return JSON.parse(
+        const saved = JSON.parse(
             window.localStorage.getItem(STORAGE_KEY) || "{}"
         );
+
+        return saved &&
+            typeof saved === "object" &&
+            !Array.isArray(saved)
+            ? saved
+            : {};
     } catch {
         return {};
     }
 }
 
-const Nav = forwardRef(function Nav({ menus }, ref) {
+function getAccordionKey(menu, parentKey = "root", index = 0) {
+    const identity =
+        menu.id ??
+        menu.key ??
+        menu.category ??
+        menu.title ??
+        index;
+
+    return `${parentKey}/${String(identity)}`;
+}
+
+function hasActiveChild(menu, pathname) {
+    if (!hasCategory(menu)) {
+        return Boolean(
+            menu.to &&
+            (
+                pathname === menu.to ||
+                pathname.startsWith(`${menu.to}/`)
+            )
+        );
+    }
+
+    return (
+        menu.menus?.some((child) =>
+            hasActiveChild(child, pathname)
+        ) ?? false
+    );
+}
+
+/**
+ * Memantau kelas .hide pada elemen induk Nav.
+ *
+ * Contoh struktur:
+ * <div className={isHidden ? "col-12 hide" : "col-12"}>
+ *     <Nav menus={menus} nav />
+ * </div>
+ */
+function useNavHidden(navRef) {
+    const [isHidden, setIsHidden] = useState(false);
+
+    useEffect(() => {
+        const element = navRef.current;
+
+        if (!element) {
+            return;
+        }
+
+        // Ambil elemen Nav dan seluruh elemen induknya.
+        const ancestors = [];
+        let current = element;
+
+        while (current && current !== document.body) {
+            ancestors.push(current);
+            current = current.parentElement;
+        }
+
+        const checkHidden = () => {
+            setIsHidden(
+                ancestors.some((item) =>
+                    item.classList.contains("hide")
+                )
+            );
+        };
+
+        checkHidden();
+
+        // Amati perubahan kelas, termasuk penambahan/penghapusan .hide.
+        const observer = new MutationObserver(checkHidden);
+
+        ancestors.forEach((item) => {
+            observer.observe(item, {
+                attributes: true,
+                attributeFilter: ["class"],
+            });
+        });
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [navRef]);
+
+    return isHidden;
+}
+
+const Nav = forwardRef(function Nav(
+    {
+        menus,
+        nav = true,
+    },
+    ref
+) {
     const navRef = useRef(null);
+
     const isWide = useIsWide(576);
+    const isNavHidden = useNavHidden(navRef);
 
     const [tooltipsEnabled, setTooltipsEnabled] = useState(false);
 
-    // Status accordion dibagikan ke semua kategori.
     const [accordionState, setAccordionState] = useState(
         getSavedAccordionState
     );
 
-    const showTooltips = tooltipsEnabled && isWide;
+    /*
+     * nav = true:
+     * Tooltip otomatis muncul ketika sidebar memiliki kelas .hide.
+     *
+     * nav = false:
+     * Tooltip tidak otomatis muncul saat sidebar disembunyikan.
+     *
+     * tooltipsEnabled tetap dapat dikontrol melalui ref.
+     */
+    const showTooltips = isWide && (
+        tooltipsEnabled ||
+        (nav && isNavHidden)
+    );
 
-    // Simpan status accordion setiap kali ada perubahan.
+    // Simpan status accordion.
     useEffect(() => {
         try {
             window.localStorage.setItem(
@@ -73,11 +180,11 @@ const Nav = forwardRef(function Nav({ menus }, ref) {
                 JSON.stringify(accordionState)
             );
         } catch {
-            // Abaikan jika localStorage tidak tersedia.
+            // localStorage tidak tersedia.
         }
     }, [accordionState]);
 
-    // API untuk mengontrol tooltip dan accordion.
+    // API kontrol melalui ref.
     useImperativeHandle(
         ref,
         () => ({
@@ -101,7 +208,10 @@ const Nav = forwardRef(function Nav({ menus }, ref) {
                 return tooltipsEnabled;
             },
 
-            // Membuka accordion berdasarkan key.
+            getNavHiddenState() {
+                return isNavHidden;
+            },
+
             openAccordion(key) {
                 setAccordionState((current) => ({
                     ...current,
@@ -109,7 +219,6 @@ const Nav = forwardRef(function Nav({ menus }, ref) {
                 }));
             },
 
-            // Menutup accordion berdasarkan key.
             closeAccordion(key) {
                 setAccordionState((current) => ({
                     ...current,
@@ -117,7 +226,6 @@ const Nav = forwardRef(function Nav({ menus }, ref) {
                 }));
             },
 
-            // Mengubah status accordion.
             toggleAccordion(key) {
                 setAccordionState((current) => ({
                     ...current,
@@ -125,7 +233,6 @@ const Nav = forwardRef(function Nav({ menus }, ref) {
                 }));
             },
 
-            // Mengatur status accordion secara langsung.
             setAccordion(key, isOpen) {
                 setAccordionState((current) => ({
                     ...current,
@@ -133,17 +240,19 @@ const Nav = forwardRef(function Nav({ menus }, ref) {
                 }));
             },
 
-            // Membaca seluruh status accordion.
             getAccordionState() {
                 return accordionState;
             },
 
-            // Menghapus status accordion yang tersimpan.
             resetAccordionState() {
                 setAccordionState({});
             },
         }),
-        [tooltipsEnabled, accordionState]
+        [
+            tooltipsEnabled,
+            accordionState,
+            isNavHidden,
+        ]
     );
 
     // Inisialisasi tooltip Bootstrap.
@@ -159,17 +268,28 @@ const Nav = forwardRef(function Nav({ menus }, ref) {
         const elements =
             navRef.current.querySelectorAll(".has-tooltip");
 
-        const instances = Array.from(elements).map((element) =>
-            window.bootstrap.Tooltip.getOrCreateInstance(element, {
-                html: false,
-                placement: element.dataset.bsPlacement || "right",
-            })
-        );
+        const instances = Array.from(elements).map((element) => {
+            const instance =
+                window.bootstrap.Tooltip.getOrCreateInstance(
+                    element,
+                    {
+                        html: false,
+                        placement:
+                            element.dataset.bsPlacement || "right",
+                    }
+                );
+
+            return instance;
+        });
 
         return () => {
             instances.forEach((instance) => instance.dispose());
         };
-    }, [showTooltips, menus, accordionState]);
+    }, [
+        showTooltips,
+        menus,
+        accordionState,
+    ]);
 
     return (
         <div ref={navRef}>
@@ -193,22 +313,13 @@ function Accordion({ children }) {
     const accordionId = useId();
 
     return (
-        <div className="accordion" id={`accordion-${accordionId}`}>
+        <div
+            className="accordion"
+            id={`accordion-${accordionId}`}
+        >
             {children}
         </div>
     );
-}
-
-// Membuat key stabil untuk setiap kategori.
-function getAccordionKey(menu, parentKey = "root", index = 0) {
-    const identity =
-        menu.id ??
-        menu.key ??
-        menu.category ??
-        menu.title ??
-        index;
-
-    return `${parentKey}/${String(identity)}`;
 }
 
 function AccordionItem({
@@ -251,11 +362,22 @@ function AccordionItem({
                     .filter(Boolean)
                     .join(" ");
 
+                const tooltipTitle =
+                    typeof menu.title === "string"
+                        ? menu.title
+                        : typeof menu.label === "string"
+                            ? menu.label
+                            : "";
+
                 const commonProps = {
-                    style: { "--depth": depth },
+                    style: {
+                        "--depth": depth,
+                    },
+
                     "data-bs-title": showTooltips
-                        ? menu.title || menu.label
+                        ? tooltipTitle
                         : undefined,
+
                     "data-bs-placement": "right",
                 };
 
@@ -302,22 +424,6 @@ function AccordionItem({
     );
 }
 
-function hasActiveChild(menu, pathname) {
-    if (!hasCategory(menu)) {
-        return Boolean(
-            menu.to &&
-            (pathname === menu.to ||
-                pathname.startsWith(`${menu.to}/`))
-        );
-    }
-
-    return (
-        menu.menus?.some((child) =>
-            hasActiveChild(child, pathname)
-        ) ?? false
-    );
-}
-
 function AccordionCategory({
     menu,
     depth,
@@ -326,38 +432,91 @@ function AccordionCategory({
     accordionState,
     setAccordionState,
 }) {
+    const collapseRef = useRef(null);
+    const collapseInstanceRef = useRef(null);
+
     const collapseId = useId();
     const headerId = useId();
 
-    const safeCollapseId = `collapse-${collapseId.replace(/:/g, "")}`;
-    const safeHeaderId = `header-${headerId.replace(/:/g, "")}`;
+    const safeCollapseId =
+        `collapse-${collapseId.replace(/:/g, "")}`;
+
+    const safeHeaderId =
+        `header-${headerId.replace(/:/g, "")}`;
 
     const { pathname } = useLocation();
 
-    // Jika belum memiliki status tersimpan, gunakan status
-    // berdasarkan halaman aktif sebagai nilai awal.
     const hasSavedState = Object.prototype.hasOwnProperty.call(
         accordionState,
         accordionKey
     );
 
     const isOpen = hasSavedState
-        ? accordionState[accordionKey]
+        ? Boolean(accordionState[accordionKey])
         : hasActiveChild(menu, pathname);
 
+    // Buat satu instance Collapse untuk setiap kategori.
+    useEffect(() => {
+        const element = collapseRef.current;
+        const Collapse = window.bootstrap?.Collapse;
+
+        if (!element || !Collapse) {
+            return;
+        }
+
+        const instance = Collapse.getOrCreateInstance(element, {
+            toggle: false,
+        });
+
+        collapseInstanceRef.current = instance;
+
+        return () => {
+            instance.dispose();
+
+            if (collapseInstanceRef.current === instance) {
+                collapseInstanceRef.current = null;
+            }
+        };
+    }, []);
+
+    // React mengontrol status; Bootstrap menangani animasi.
+    useEffect(() => {
+        const instance = collapseInstanceRef.current;
+
+        if (!instance) {
+            return;
+        }
+
+        if (isOpen) {
+            instance.show();
+        } else {
+            instance.hide();
+        }
+    }, [isOpen]);
+
     function toggleAccordion() {
-        setAccordionState((current) => ({
-            ...current,
-            [accordionKey]: !(
+        setAccordionState((current) => {
+            const currentlyOpen =
                 Object.prototype.hasOwnProperty.call(
                     current,
                     accordionKey
                 )
-                    ? current[accordionKey]
-                    : hasActiveChild(menu, pathname)
-            ),
-        }));
+                    ? Boolean(current[accordionKey])
+                    : hasActiveChild(menu, pathname);
+
+            return {
+                ...current,
+                [accordionKey]: !currentlyOpen,
+            };
+        });
     }
+
+    const tooltipTitle =
+        typeof menu.title === "string"
+            ? menu.title
+            : typeof menu.category === "string"
+                ? menu.category
+                : "";
 
     return (
         <div className="accordion-item">
@@ -380,24 +539,22 @@ function AccordionCategory({
                     aria-controls={safeCollapseId}
                     data-bs-title={
                         showTooltips
-                            ? menu.title || menu.category
+                            ? tooltipTitle
                             : undefined
                     }
                     data-bs-placement="right"
-                    style={{ "--depth": depth }}
+                    style={{
+                        "--depth": depth,
+                    }}
                 >
                     {menu.label}
                 </button>
             </h2>
 
             <div
+                ref={collapseRef}
                 id={safeCollapseId}
-                className={[
-                    "accordion-collapse collapse",
-                    isOpen ? "show" : "",
-                ]
-                    .filter(Boolean)
-                    .join(" ")}
+                className="accordion-collapse collapse"
                 aria-labelledby={safeHeaderId}
             >
                 <div className="accordion-body p-0">
